@@ -1,0 +1,352 @@
+# Variable units, data should be organized into M sections of known properties from just d/s of the control at top going d/s. 
+# Process overview: Start at D/s, iterate, check u/s, bisection method for new d/s conditions, 
+
+## Input units
+
+# if units == eng
+#   g = 32.2
+# else
+#   g = 9.81
+#
+# if units == eng
+# eH = 0.00016 # permissible error for total mechanical energy head H in ft
+# else
+# eH = 0.0005 # permissible error for total mechanical energy head H in m
+
+## Initial D/S Flow rate guess 
+
+# Qtop = Freeflow equation for u/s radial gate with prescribed water level.???
+
+# ql*deltaX is the lateral flow lost throughout the entire channel. do one sum u/s regulator, one d/s regulator, then sum
+# Qlsumus = 0
+# For (x:0:midway)
+# Qlsumus = Qlsumus + ql(x)*(deltaX)
+#
+# Qlsumds = 0
+# For (x:midway:d/s end)
+# Qlsumds = Qlsumds + ql(x)*deltaX
+#
+# Qlsum = Qlsumus+ Qlsumds
+
+# mid regulator initial guess:
+# Use appropriate freeflow equation, with Q = Qtop-Qlsumus
+
+# Qofftakes = known qouts, + appropriate equations for offtakes with given openings, using h = depth at mid regulator..
+
+# Q2 = Qtop - Qlsum - Q offtakes 
+# dsQ = Q2 (Save this Q2 so that we can build from it in the bisection method)
+
+
+#######################################################################################################################
+## Overall Loop: ######################################################################################################
+#######################################################################################################################
+
+# While: The flow rate guessed by the d/s iteration, Q, and the top flowrate given by the u/s freeflow equation, Qtop,
+#        are different by idk,,, like,,, 0.0005%??
+
+    # Calculate h2 from dsQ:
+    # h2 = Sharp-crested weir with specified characteristics equation, based on dsQ
+
+    # Prepare for the iterative solution for the section just U/S of boundary
+    #    Initial guess
+        h1 = h2
+
+    #    Initial Inputs
+    #deltaX = x length of first segment
+    #ql = ql of first segment
+    #S0 = (Z2-Z1)/deltaX
+    #alpha = kinetic energy correction coefficient of first segment
+    #n = Manning's roughness of the first section
+    #a1_irreg = geometry scale coefficient for irregular geometries of first section
+    #a2_irreg = geometry shape coefficient for irregular geometries of first section
+    #r1_irreg = irregular hyrdaulic radius scale coefficient of first section
+    #r2_irreg = irregular hydraulic radius shape coefficient of first section
+    #Tw_irreg = Top width of an irregular geometry of the first section....
+    #b = bottom width for regular geometry of first section
+    #m = side slope for regular geometry of first section
+
+
+    ## Calculate D/s section parameters:
+
+    # D/S Area:
+    # If (D/s geometry is regular:)
+        A2 = h2 * b + m * h2 ^ 2
+    # Else 
+        A2 = a1*h2^a2
+
+    # D/s Velocity:
+        u2 = Q2 / (A2)
+    
+    # D/s Hydraulic radius:
+    # If (D/s geometry is regular)
+        R2 = A2 / (b + 2 * h2 * ((1 + (m ^ 2)) ^ (0.5)))
+    # Else
+        R2 = r1_irreg*h2^r2_irreg
+    
+    # D/s Friction slope using Manning's:
+        Sf2 = ((u2 ^ 2) * (n ^ 2)) / (R2 ^ (4 / 3))
+    
+    # D/s Total head:    
+        Head2 = h2 + (alpha * (u2 ^ 2)) / (2 * g) + Z2 # Where Z2 == elevation(M)
+    
+    ## Store values in the results matrix:
+
+    # depth(M) = h2 #Where M is the length of the channel in question
+    # area(M) = A2
+    # hydraulic_radius(M) = R2
+    # velocity(M) = u2
+    # mechanical_head(M) = Head2
+    # friction_slope(M) = Sf2
+    # froude(M) = u2 / (g * A2 / (b + 2 * m* h2)) ^ (0.5) -or- = u2/(g*A2/Tw_irreg)^0.5
+    # elevation(M) = z2
+    # WSE(M) = z2 + h2
+
+    #######################################################################################################################
+    #### Initial Segment:  ################################################################################################
+    #######################################################################################################################
+
+    # This first loop is just to find the depth at the u/s end of the first segment above the sharp-crested weir at the
+    # downstream end. It used an initial guess of h1 = h2. We are calculating for the segment (M-1) where M is the most 
+    # segment. 
+    
+    ##Iterate to find h1
+    While Abs(deltaHead) > eH
+            
+        # Update h1: first iteration, deltah1 is 0
+        h1 = h1 + deltah1 
+        # Store h1: depth(M-1) = h1
+    
+        ## Compute A1 from h1:
+        # If (regular geometry)
+            A1 = h1 * b + m * h1 ^ 2
+        # Else (irregular geometry)
+            A1 = a1_irreg*h1^a2_irreg
+            
+        # Store A1: depth(M-1) = A1
+        
+        # Compute u1 from eqn (9) => This assumes that there is no offtake in the first segment..... unlikely.... 
+        u1 = (Q2 - ql * deltaX) / A1 
+        # Recall that Q2 is just the trial value of the flow rate at the downstream end of the segment in question.
+        # Q2 will build as we go up the channel,         
+        # Store u1: velocity(M-1) = u1
+    
+        # Since we're given the elevations at each segment, Z1 doesn't need to be calculated from the slope. 
+    
+        # Calculate the upstream head, the first way:
+        Head1a = z1 + h1 + (alpha * (u1 ^ 2)) / (2 * g)
+        # Don't bother storing this, since we'll average it with the other way to calculate Head for the reported value.
+        
+        # Compute R1
+        # If(regular)       
+        R1 = A1 / (b + (2 * h1 * ((1 + (m ^ 2)) ^ (0.5))))
+        # Else(irregular)
+        R1 = r1_irreg*h1^r2_irreg
+        # Store R1: hydraulic_radius(M-1) = R1
+      
+        # Compute Sf1
+        Sf1 = ((u1 ^ 2) * (n ^ 2)) / (R1 ^ (4 / 3))
+        # Store Sf1: friction_slope(M-1) = Sf1
+        
+        # Compute SfBar
+        SfBar = (Sf1 + Sf2) / 2
+               
+        # Insert Calculation of delHe here... Once there may be bends... => This assumes no bends in the most d/s segment
+    
+        # Compute U/s mechanical energy head Head1b using eqn (7)
+        Head1b = Head2 + SfBar * deltaX
+        # Store H1: mechanical_head(M-1) = (Head1a + Head1b) / 2
+    
+        #  Compute deltaHead
+        deltaHead = Head1a - Head1b
+        
+        # Compute Fr1
+        # if (regular)        
+        D1 = A1 / (b + 2 * m * h1)
+        # Else(irregular)
+        D1 = A1/Tw_irreg
+        #Hydraulic depth = A/Tw, assuming we will we be given Tw for irregular geometries 
+        
+        Fr1 = u1 / ((g * D1) ^ (0.5))
+        # Store Fr1: froude(M-1) = Fr1
+      
+        # Store WSE
+        # WSE(M-1) = h1 + z1
+      
+        # Compute deltaH
+        deltah1 = -(deltaHead) / (1 - Fr1 ^ 2 + ((3 * Sf1 * deltaX) / (2 * R1)))
+
+    # Loop Back to the top!
+    
+    ######################################################################################################################
+    #### Iteration for Segments upstream of the most downstream segment ##################################################
+    ######################################################################################################################
+
+    ## Iterate for the rest of the channel
+    
+    #Initialize the section counter. 
+    ussection = M-2 #The section 2 segments away from the d/s control structure.  
+    
+    # Start of Loop: 
+    # While X(ussection)>=0 #for all sections until the 0th section, 0th section being x==0, aka the u/s radial sluice gate
+        
+        # Define variable dssection:
+        dssection = ussection+1
+        
+        # Reset deltah1 & deltaHead
+        deltah1 = 0
+        deltaHead = 1
+    
+        # Gather variables to make it easier to debug
+        
+        # Initial Inputs
+        deltaX = # x(dssection)-x(ussection)
+        ql = # (ql(dssection)+ql(ussection))/2 #Averaged ql => Assumes ql is given at each section, not each segment...
+        alpha = #alpha(ussection) # The kinetic energy correction factor for the u/s section
+        n = # roughness(ussection) # Manning's roughness of the upstream section => Assumes n is given at each section, not
+                                   # each segment....
+            
+        # Upstream Geometry
+        # If (regular)
+        b = #b(ussection)
+        m = #m(ussection)
+        # Else (irregular)
+        a1_irreg = #a1_irreg(ussection)
+        a2_irreg = #a2_irreg(ussection)
+        r1_irreg = #r1_irreg(ussection)
+        r2_irreg = #r2_irreg(ussection)
+        Tw_irreg = #Tw_irreg(ussection)
+        
+        # Loss Coefficients
+        Cc = #loss coefficient for any sudden contractions present between x(ussection) and x(dssection)
+        Ce = #loss coefficient for any sudden expansions present between x(ussection) and x(dssection)
+        Cb = #loss coefficient for any bends present between x(ussection) and x(dssection)
+        
+        # Length of the previous segment, for interpolation to find initial guess
+        deltaX2 = #x(dssection+1)-x(dssection) #length of the segment prior to the current segment
+        
+        # Properties at the downstream section:
+        alpha2 = #alpha(dssection) #kinetic energy correction factor for the downstream section
+        h2 = #depth(dssection)
+        h3 = #depth(dssection+1)
+        A2 = #area(dssection)
+        R2 = #hydraulic_radius(dssection)
+        u2 = #velocity(dssection)
+        Head2 = #mechanical_head(dssection)
+        z2 = #elevation(dssection)
+        Sf2 = #friction_slope(dssection)
+        
+        # Head loss due to bends, expansions, and contractions
+        delHe = (Cb + Ce + Cc) * (alpha2 * u2 ^ 2) / (2 * g)
+        
+        # Downstream flow rate
+        Q2 = u2 * A2
+    
+        # Initial Guess
+        h1 = (h2 - h3) / deltaX2 * deltaX + h2
+        
+        
+        ###################################################################################################################
+        ## Iteratively Calculate ##########################################################################################
+        ## The next section's    ##########################################################################################
+        ## Properties            ##########################################################################################
+        ###################################################################################################################
+        
+        #Start Loop:
+        # While Abs(deltaHead) > eH
+            
+            # Update h1
+            h1 = h1 + deltah1
+            #Store h1: depth(ussection) = h1
+    
+            # Compute A1 from h1:
+            # If (regular)       
+            A1 = h1 * b + m * h1 ^ 2
+            # Else (irregular)
+            A1 = a1_irreg * h1 ^ a2_irreg
+            #Store A1: area(ussection) = A1
+                                 
+            # If (there exists an outflow bewteen x(ussection) and x(dssection))
+                # if (finding flow rate out....)
+                    # Interpolate between h1 and h2 to make h1.5, use h1.5 to calculate qout using rating equation
+                    # h_offtake =(h2 - h1) / deltaX * (offtake(x)-x(ussection)) + h1 
+                                                              # Where offtake(x) is the x location of the offtake structure
+                                                              # and deltaX is the width of the current segment
+                    #if (radial)
+                        # qout = appropriate equation for radial gate, using h_offtake
+                    #elif (vertical)
+                        # qout = appropriate equation for vertical gate, using h_offtake
+                # if (given q out...)
+                    #qout = given qout
+            # else
+                #qout = 0
+            
+            # Compute Q1
+            Q1 = Q2 - ql * deltaX - qout       
+            # Store Q1?
+            
+            # Compute u1 from eqn (9)
+            u1 = Q1 / A1
+            # Store u1 in results matrix: velocity(ussection) = u1
+   
+            # Compute upstream head one way
+            Head1a = elevation(ussection) + h1 + (alpha * (u1 ^ 2)) / (2 * g)
+     
+            # Compute R1
+            # if (regular)
+            R1 = A1 / (b + (2 * h1 * ((1 + (m ^ 2)) ^ (0.5))))
+            # else (irregular)
+            R1 = r1_irreg * h1 ^ r2_irreg
+            # Store R1: hydraulic_radius(ussection) = R1
+      
+            # Compute Sf1
+            Sf1 = ((u1 ^ 2) * (n ^ 2)) / (R1 ^ (4 / 3))
+            Cells(x, 16).Value = Sf1
+        
+            # Compute SfBar
+            SfBar = (Sf1 + Sf2) / 2
+             
+            # Compute U/s mechanical energy head Head1b using eqn (7)
+            Head1b = Head2 + SfBar * deltaX + delHe
+            Cells(x, 15).Value = (Head1a + Head1b) / 2
+    
+            # Compute deltaHead
+            deltaHead = Head1a - Head1b
+    
+            # Compute Fr1
+            # if (regular)
+            D1 = A1 / (b + 2 * m * h1)
+            # Else (irregular)
+            D1 = A1 / Tw
+            # Froude numbeer is then:
+            Fr1 = u1 / ((g * D1) ^ (0.5))
+            # Store Fr1: froude(ussection) = Fr1
+
+            # Compute WSE
+            WSE(ussection) = h1 + z1
+    
+            # Compute deltah1
+            deltah1 = -(deltaHead) / (1 - Fr1 ^ 2 + ((3 * Sf1 * deltaX) / (2 * R1)))
+            
+            # Loop back to converge on the proper upstream section properties!
+
+        # Before iterating to the next upstream segment, figure out the gate settings necessary to deliver required qout:
+        # if (given qout)
+            # Solve gate equation for opening using h_offtake, assuming free-flow.
+            # Store the value in a results 6            
+            
+        # Iterate to next upstream segment
+        ussection = ussection-1
+    # Loop back to move on to the next u/s section!
+
+    # Before the end of the whole-channel loop, let's taco bout the Q values, make sure they match
+    # We're gonna have to match Qtop, the given, to the calculated at the top of the channels
+    # Q at the top of the channel is calculated as ubar*A at the most upstream section of the channel
+    # Q top is the given, with a free flow radial sluice gate with a given u/s depth. 
+
+# Bisection method here
+
+
+# Ends with:
+# dsQ = dsQ + (Something)
+
+# Loop to beginning with a new dsQ
